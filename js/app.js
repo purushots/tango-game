@@ -78,6 +78,8 @@
   let badges = new Map();  // "a:b" -> badge element
   let timerId = null;
   let errTimer = null;
+  let hintFillTimer = null;
+  let hintLingerTimer = null;
   let hintBusy = false;
   let messageKind = '';    // '', 'error', 'hint'
 
@@ -255,8 +257,8 @@
     state.board = state.puzzle.givens.slice();
     state.undo = [];
     clearTimeout(errTimer);
+    cancelHint();
     clearErrorMarks();
-    clearHintMarks();
     setMessage('', '');
     for (let i = 0; i < CELLS; i++) renderCell(i);
     updateUndoBtn();
@@ -269,6 +271,16 @@
     for (const cell of cells) cell.classList.remove('hint-involved', 'hint-target');
   }
 
+  function cancelHint() {
+    clearTimeout(hintFillTimer);
+    clearTimeout(hintLingerTimer);
+    hintFillTimer = null;
+    hintLingerTimer = null;
+    clearHintMarks();
+    hintBusy = false;
+    hintBtn.disabled = state.won;
+  }
+
   function onHint() {
     if (state.won || hintBusy) return;
     const h = E.hint(state.board, state.puzzle);
@@ -279,9 +291,9 @@
     for (const c of h.involved) cells[c].classList.add('hint-involved');
     cells[h.cell].classList.add('hint-target');
     setMessage(h.reason, 'hint');
-    setTimeout(() => {
+    hintFillTimer = setTimeout(() => {
       applyMove(h.cell, h.value, true); // a hint counts as a move for undo
-      setTimeout(() => {
+      hintLingerTimer = setTimeout(() => {
         clearHintMarks();
         hintBusy = false;
         hintBtn.disabled = state.won;
@@ -311,7 +323,10 @@
       ? 'Your first solve — welcome to Tango.'
       : solves + ' puzzles solved';
     setMessage('', '');
-    setTimeout(() => { winOverlay.hidden = false; }, WIN_DELAY_MS);
+    setTimeout(() => {
+      winOverlay.hidden = false;
+      newPuzzleBtn.focus();
+    }, WIN_DELAY_MS);
   }
 
   // ---------- Puzzle lifecycle ----------
@@ -323,8 +338,7 @@
     state.elapsed = elapsed;
     state.puzzleNo = puzzleNo;
     state.won = false;
-    hintBusy = false;
-    hintBtn.disabled = false;
+    cancelHint();
     clearBtn.disabled = false;
     winOverlay.hidden = true;
     clearTimeout(errTimer);
@@ -334,7 +348,7 @@
     updateUndoBtn();
     renderTimer();
     saveState();
-    startTimer();
+    if (!document.hidden) startTimer();
   }
 
   function newPuzzle() {
@@ -365,12 +379,18 @@
   function openRules() {
     rulesOverlay.hidden = false;
     stopTimer();
+    rulesCloseBtn.focus();
   }
 
   function closeRules() {
     rulesOverlay.hidden = true;
-    if (!state.won) startTimer();
+    if (!state.won && !document.hidden) startTimer();
+    howBtn.focus();
   }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !rulesOverlay.hidden) closeRules();
+  });
 
   // ---------- Wiring ----------
 

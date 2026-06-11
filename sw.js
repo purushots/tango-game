@@ -1,8 +1,10 @@
-/* Tango service worker — cache-first, versioned, all paths relative so the app
- * works under a GitHub Pages subpath (e.g. /tango-game/). */
+/* Tango service worker — network-first with cache fallback, versioned, all
+ * paths relative so the app works under a GitHub Pages subpath
+ * (e.g. /tango-game/). Network-first means deploys reach users on next load
+ * while the cache keeps the app fully playable offline. */
 'use strict';
 
-const CACHE = 'tango-v1';
+const CACHE = 'tango-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -18,7 +20,9 @@ const ASSETS = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE)
-      .then((cache) => cache.addAll(ASSETS))
+      // cache: 'reload' bypasses the HTTP cache so a new SW never pins
+      // stale files served under GitHub Pages' max-age.
+      .then((cache) => cache.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' }))))
       .then(() => self.skipWaiting())
   );
 });
@@ -34,15 +38,14 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   event.respondWith(
-    caches.match(event.request).then((hit) =>
-      hit ||
-      fetch(event.request).then((res) => {
+    fetch(event.request)
+      .then((res) => {
         if (res.ok && new URL(event.request.url).origin === self.location.origin) {
           const copy = res.clone();
           caches.open(CACHE).then((cache) => cache.put(event.request, copy));
         }
         return res;
       })
-    )
+      .catch(() => caches.match(event.request))
   );
 });
